@@ -70,23 +70,32 @@ class BPETokenizer:
         assert vocab_size >= 256 + len(SPECIAL_TOKENS)
         num_merges = vocab_size - 256 - len(SPECIAL_TOKENS)
 
-        chunks = re.findall(SPLIT_PATTERN, text)
-        ids_chunks = [list(ch.encode("utf-8")) for ch in chunks]
+        # Frequency-weighted unique chunks: security text is highly repetitive,
+        # so collapsing identical pre-tokens (word pieces) to (ids, count) makes
+        # each merge scan the number of *distinct* chunks, not every occurrence.
+        chunk_freq: dict[tuple[int, ...], int] = {}
+        for ch in re.findall(SPLIT_PATTERN, text):
+            key = tuple(ch.encode("utf-8"))
+            chunk_freq[key] = chunk_freq.get(key, 0) + 1
+        work: list[list] = [[list(ids), freq] for ids, freq in chunk_freq.items()]
 
         merges: dict[tuple[int, int], int] = {}
         vocab: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
 
         for m in range(num_merges):
             stats: dict[tuple[int, int], int] = {}
-            for ids in ids_chunks:
-                _get_stats(ids, stats)
+            for ids, freq in work:
+                for pair in zip(ids, ids[1:]):
+                    stats[pair] = stats.get(pair, 0) + freq
             if not stats:
                 break
             pair = max(stats, key=stats.get)
             if stats[pair] < 2:
                 break  # nothing worth merging
             new_id = 256 + m
-            ids_chunks = [_merge(ids, pair, new_id) for ids in ids_chunks]
+            for item in work:
+                if pair[0] in item[0]:  # cheap skip when the pair can't occur
+                    item[0] = _merge(item[0], pair, new_id)
             merges[pair] = new_id
             vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]
             if verbose and (m % 200 == 0 or m == num_merges - 1):
