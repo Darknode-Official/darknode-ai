@@ -95,7 +95,7 @@ def train(model_cfg: DarknodeGPTConfig, cfg: TrainConfig, resume: bool = False):
     optim = torch.optim.AdamW(model.parameters(), lr=cfg.lr,
                               betas=(cfg.beta1, cfg.beta2),
                               weight_decay=cfg.weight_decay)
-    scaler = torch.cuda.amp.GradScaler(enabled=(dtype == torch.float16))
+    scaler = torch.amp.GradScaler("cuda", enabled=(dtype == torch.float16))
     start_step = 0
     best_val = float("inf")
 
