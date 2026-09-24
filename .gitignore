@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# generated artifacts (kept out of git; reproducible from the pipeline)
+data/corpus/
+data/prepared/
+data/manifest.json
+runs/
+*.bin
+*.pt
+.ipynb_checkpoints/
