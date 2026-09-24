@@ -102,43 +102,149 @@ host to many others in a short window, often with the same account. The
 detection hypothesis is "one credential, many destinations, short time"; the
 false positives are vulnerability scanners and management tooling, which must be
 allow-listed with justification.""",
+    # --- identity / cloud ---
+    """Impossible-travel is a login from two locations too far apart to travel
+between in the elapsed time. It is a strong signal but not proof: VPNs, proxies
+and mobile carrier routing produce false positives. Treat it as a hypothesis and
+confirm with the device and the authentication method (MFA satisfied or not).""",
+    """In cloud IAM, over-broad roles are the common weakness: a wildcard action
+on a wildcard resource means one leaked key is total compromise. Least privilege
+is scoped actions on scoped resources, reviewed regularly. Audit for unused
+permissions and remove them; unused access is latent risk.""",
+    """OAuth consent-phishing tricks a user into granting a malicious app real
+tokens, so there is no password to steal and MFA is already satisfied. The
+defensive signal is a new application consent with broad scopes, followed by
+mailbox or drive access from unfamiliar infrastructure.""",
+    # --- web security concepts ---
+    """SSRF (server-side request forgery) makes a server fetch a URL an attacker
+controls, often to reach internal metadata endpoints. The defensive fix is to
+disallow user-controlled destinations, block link-local and internal ranges, and
+require an allow-list of outbound hosts. Do not rely on blocklists alone.""",
+    """Broken access control is the most common serious web flaw: the server
+trusts a client-supplied identifier without checking the caller is authorized for
+it. The fix is server-side authorization on every object access, never hiding the
+control in the UI. Test by changing an id and observing the response.""",
+    # --- forensics ---
+    """Order of volatility guides evidence collection: capture the most transient
+data first — memory, network connections, running processes — before disk, which
+persists. Powering off a host to image it can destroy the very memory that holds
+injected code. Record hashes of every artifact at collection time.""",
+    """A timeline is only as trustworthy as its clocks. Normalise every source to
+one timezone (UTC is safest), note clock skew between systems, and label each
+event with its evidence type. A timeline that mixes inference with observation
+misleads the reader into false confidence.""",
+    # --- crypto / tls ---
+    """TLS provides confidentiality and integrity in transit, not at rest and not
+against a compromised endpoint. Certificate validation is the part most often
+disabled to make something work, and disabling it silently removes the guarantee.
+Validate or pin; never ignore certificate errors in production.""",
+    # --- reporting ---
+    """A good finding states the issue, the evidence for it, the impact in the
+asset's context, and a concrete remediation. Severity without evidence is an
+opinion; remediation without impact is noise. Separate what was observed from
+what is recommended.""",
+    """Executive summaries answer three questions: what happened, what is the
+business impact, and what must be decided now. Keep technical detail in the body
+with citations. Never put an unverified claim in the summary — it will be quoted
+out of context.""",
 ]
 
 # Building blocks for the synthetic evidence-typed generator.
-_HOSTS = ["web-01", "db-03", "dc-01", "workstation-14", "vpn-gw", "mail-02", "jump-01"]
-_USERS = ["svc_backup", "a.khan", "root", "administrator", "j.doe", "svc_deploy"]
-_SRCIPS = ["10.0.4.11", "10.0.9.240", "192.168.1.50", "172.16.8.4", "10.0.2.99"]
+_HOSTS = ["web-01", "db-03", "dc-01", "workstation-14", "vpn-gw", "mail-02",
+          "jump-01", "app-07", "k8s-node-2", "fileserver-01", "ci-runner-3"]
+_USERS = ["svc_backup", "a.khan", "root", "administrator", "j.doe", "svc_deploy",
+          "m.singh", "svc_scan", "helpdesk", "b.owens", "svc_sql"]
+_SRCIPS = ["10.0.4.11", "10.0.9.240", "192.168.1.50", "172.16.8.4", "10.0.2.99",
+           "10.0.7.30", "203.0.113.44", "198.51.100.9", "10.0.12.5"]
 _TECHS = [
     ("T1110", "brute force", "many auth failures then a success"),
     ("T1021", "remote services", "internal auth from one host to many"),
     ("T1048", "exfiltration over alternative protocol", "large outbound DNS volume"),
     ("T1053", "scheduled task/job", "a new cron entry appeared"),
     ("T1059", "command interpreter", "a shell spawned from a browser process"),
+    ("T1078", "valid accounts", "a login with valid credentials from new infrastructure"),
+    ("T1567", "exfiltration to web service", "a large upload to an unfamiliar cloud host"),
+    ("T1136", "create account", "a new local account was created outside change control"),
+]
+_CVES = [
+    ("CVE-2021-44228", "Log4Shell", "log4j", "remote code execution via JNDI lookup"),
+    ("CVE-2014-0160", "Heartbleed", "OpenSSL", "memory disclosure from a TLS heartbeat"),
+    ("CVE-2017-0144", "EternalBlue", "SMBv1", "remote code execution over SMB"),
+    ("CVE-2019-0708", "BlueKeep", "RDP", "pre-auth remote code execution over RDP"),
 ]
 
 
-def _synthetic_case(rng: random.Random) -> str:
-    host = rng.choice(_HOSTS)
-    user = rng.choice(_USERS)
-    ip = rng.choice(_SRCIPS)
+def _case_triage(rng):
+    host, user, ip = rng.choice(_HOSTS), rng.choice(_USERS), rng.choice(_SRCIPS)
     tid, tname, shape = rng.choice(_TECHS)
     fails = rng.randint(12, 400)
-    lines = [
-        f"<|system|> Darknode analyst assistant. Separate observation from inference. Cite evidence.",
+    return "\n".join([
+        "<|system|> Darknode analyst assistant. Separate observation from inference. Cite evidence.",
         f"<|user|> Triage alert {rng.randint(1000,9999)} on {host}.",
-        f"<|assistant|>",
+        "<|assistant|>",
         f"Summary: possible {tname} ({tid}) involving account {user} on {host}.",
         f"<|evidence|> OBSERVED: {fails} failed logons for {user} from {ip}, then 1 success, within 6 minutes (auth log).",
-        f"<|evidence|> OBSERVED: source {ip} is internal and not on the scanner allow-list.",
-        f"<|evidence|> RETRIEVED: {user} is a service account that normally authenticates only from the backup host.",
-        f"<|evidence|> INFERRED: the failure-then-success pattern is consistent with {shape}.",
+        f"<|evidence|> OBSERVED: source {ip} is not on the scanner allow-list.",
+        f"<|evidence|> RETRIEVED: {user} normally authenticates only from a known host.",
+        f"<|evidence|> INFERRED: the pattern is consistent with {shape}.",
         f"<|evidence|> HYPOTHESIS: the credential for {user} may be compromised. Not yet confirmed.",
-        f"<|evidence|> UNKNOWN: whether any action was taken after the successful logon (session logs not yet retrieved).",
+        "<|evidence|> UNKNOWN: whether any action followed the successful logon (session logs not yet retrieved).",
         f"Recommended next steps: retrieve the post-logon session for {user} on {host}; "
-        f"check for new persistence (cron, systemd, authorized_keys); "
-        f"consider containment (disable {user}) pending approval. RECOMMENDATION only — no action taken.",
-    ]
-    return "\n".join(lines)
+        "check for new persistence (cron, systemd, authorized_keys); "
+        f"consider containment (disable {user}) pending approval. RECOMMENDATION only, no action taken.",
+    ])
+
+
+def _case_log(rng):
+    ip, user, host = rng.choice(_SRCIPS), rng.choice(_USERS), rng.choice(_HOSTS)
+    port = rng.choice([22, 445, 3389, 3306, 6379])
+    return "\n".join([
+        "<|user|> Explain this log line.",
+        f"log: {rng.randint(1,28):02d}/03 14:{rng.randint(10,59)}:22 {host} sshd[{rng.randint(1000,9999)}]: "
+        f"Accepted password for {user} from {ip} port {rng.randint(30000,60000)} ssh2",
+        "<|assistant|>",
+        f"<|evidence|> OBSERVED: a successful SSH password login for {user} from {ip} to {host}.",
+        f"<|evidence|> INFERRED: password auth (not key) is in use, which is weaker and worth noting.",
+        f"<|evidence|> UNKNOWN: whether {ip} is expected for {user}; compare against the baseline.",
+        f"This line alone is not malicious. It becomes relevant if {ip} is unfamiliar or if it "
+        "follows a burst of failures. Fix the timezone before correlating with other sources.",
+    ])
+
+
+def _case_detection(rng):
+    tid, tname, shape = rng.choice(_TECHS)
+    return "\n".join([
+        f"<|user|> Draft a detection idea for {tname}.",
+        "<|assistant|>",
+        f"Hypothesis: {tname} ({tid}) shows as {shape}.",
+        "Data source: authentication and process-creation logs.",
+        "Logic: group by account over a short window; alert when the count crosses a tuned threshold.",
+        "Expected false positives: vulnerability scanners, backup jobs, admin tooling. Allow-list them with justification.",
+        "<|evidence|> RECOMMENDATION: validate precision and recall on recorded benign and malicious telemetry before deploying.",
+    ])
+
+
+def _case_vuln(rng):
+    cve, name, sw, effect = rng.choice(_CVES)
+    host = rng.choice(_HOSTS)
+    exposed = rng.choice(["internet-facing", "internal-only"])
+    return "\n".join([
+        f"<|user|> Explain {cve} and its risk on {host}.",
+        "<|assistant|>",
+        f"<|evidence|> RETRIEVED: {cve} ({name}) affects {sw}: {effect}.",
+        f"<|evidence|> OBSERVED: {host} runs {sw} and is {exposed}.",
+        f"<|evidence|> INFERRED: risk is {'elevated' if exposed=='internet-facing' else 'moderate'} "
+        f"because exposure is {exposed}. CVSS is severity, not risk in context.",
+        f"RECOMMENDATION: patch {sw} on {host}; if patching is delayed, mitigate exposure and monitor. "
+        "Prioritise by known-exploited status over raw score.",
+    ])
+
+
+_GENERATORS = [_case_triage, _case_triage, _case_log, _case_detection, _case_vuln]
+
+
+def _synthetic_case(rng: random.Random) -> str:
+    return rng.choice(_GENERATORS)(rng)
 
 
 def build_corpus(out_dir: str | Path, n_synthetic: int = 1200, seed: int = 7) -> dict:
