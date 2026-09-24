@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "darknode-ai"
+version = "0.1.0"
+description = "Darknode AI — a small cybersecurity language model trained from scratch (tokenizer, transformer, training loop, eval), plus a Colab training notebook."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Darknode" }]
+dependencies = ["numpy>=1.24", "torch>=2.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+darknode-ai = "darknode_ai.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["darknode_ai*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
