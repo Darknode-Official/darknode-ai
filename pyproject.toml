@@ -13,10 +13,12 @@ authors = [{ name = "Darknode" }]
 dependencies = ["numpy>=1.24", "torch>=2.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=7", "httpx>=0.24"]
+serve = ["fastapi>=0.110", "uvicorn>=0.23", "pydantic>=2"]
 
 [project.scripts]
 darknode-ai = "darknode_ai.cli:main"
+darknode-ai-serve = "darknode_ai.serve.app:main"
 
 [tool.setuptools.packages.find]
 include = ["darknode_ai*"]

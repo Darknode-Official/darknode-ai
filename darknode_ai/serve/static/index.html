@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Darknode AI</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121820; --panel2:#0e141b; --line:#1e2a36;
+    --fg:#e6edf3; --mut:#8aa0b2; --accent:#39d0d8; --accent2:#5a8dee;
+    --observed:#3fb950; --retrieved:#58a6ff; --inferred:#d29922;
+    --hypothesis:#db6d28; --recommend:#a371f7; --unknown:#8b949e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;
+    border-bottom:1px solid var(--line);background:var(--panel2)}
+  .logo{font-weight:700;letter-spacing:.5px}
+  .logo b{color:var(--accent)}
+  .badge{margin-left:auto;font-size:12px;color:var(--mut);
+    border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:var(--unknown);margin-right:6px;vertical-align:middle}
+  .wrap{display:grid;grid-template-columns:300px 1fr;gap:0;height:calc(100vh - 53px)}
+  aside{border-right:1px solid var(--line);padding:16px;overflow:auto;background:var(--panel2)}
+  main{display:flex;flex-direction:column;min-width:0}
+  h3{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--mut);margin:0 0 8px}
+  .act{display:block;width:100%;text-align:left;background:var(--panel);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px;margin-bottom:8px;cursor:pointer}
+  .act:hover{border-color:var(--accent)}
+  .act small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
+  .ctl{margin:14px 0 4px}
+  .ctl label{display:flex;justify-content:space-between;color:var(--mut);font-size:12px}
+  input[type=range]{width:100%}
+  .banner{background:#1a1206;border:1px solid #3a2a0a;color:#e5b567;
+    padding:8px 12px;font-size:12px;margin:12px 16px 0;border-radius:8px}
+  .io{flex:1;overflow:auto;padding:16px}
+  #out{white-space:pre-wrap;word-break:break-word}
+  .line{padding:2px 0}
+  .tag{display:inline-block;min-width:118px;font-weight:700}
+  .OBSERVED{color:var(--observed)} .RETRIEVED{color:var(--retrieved)}
+  .INFERRED{color:var(--inferred)} .HYPOTHESIS{color:var(--hypothesis)}
+  .RECOMMENDATION{color:var(--recommend)} .UNKNOWN{color:var(--unknown)}
+  .composer{border-top:1px solid var(--line);padding:12px 16px;background:var(--panel2)}
+  textarea{width:100%;height:70px;resize:vertical;background:var(--panel);color:var(--fg);
+    border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+  .row{display:flex;gap:10px;margin-top:8px;align-items:center}
+  button.send{background:var(--accent);color:#04222b;border:0;border-radius:8px;
+    padding:9px 18px;font-weight:700;cursor:pointer}
+  button.send:disabled{opacity:.5;cursor:wait}
+  .hint{color:var(--mut);font-size:12px}
+  .empty{color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><b>DARKNODE</b> AI</div>
+  <div class="badge"><span class="dot" id="dot"></span><span id="status">checking model...</span></div>
+</header>
+<div class="wrap">
+  <aside>
+    <h3>Analyst actions</h3>
+    <button class="act" data-p="<|user|> Triage alert: many failed logins then one success for svc_backup on db-03.\n<|assistant|>\n">Triage an alert<small>evidence-typed summary + next steps</small></button>
+    <button class="act" data-p="<|user|> Explain this log line.\nlog: 14/03 14:22:10 web-01 sshd[4412]: Accepted password for a.khan from 203.0.113.44 port 51002 ssh2\n<|assistant|>\n">Explain a log line<small>what it means, what to check</small></button>
+    <button class="act" data-p="<|user|> Draft a detection idea for lateral movement.\n<|assistant|>\n">Draft a detection<small>hypothesis, data source, FPs</small></button>
+    <button class="act" data-p="<|user|> Explain CVE-2021-44228 and its risk on app-07.\n<|assistant|>\n">Explain a CVE<small>impact in asset context</small></button>
+
+    <div class="ctl">
+      <label>temperature <span id="tv">0.8</span></label>
+      <input id="temp" type="range" min="0" max="1.5" step="0.05" value="0.8">
+    </div>
+    <div class="ctl">
+      <label>max tokens <span id="mv">160</span></label>
+      <input id="maxt" type="range" min="32" max="512" step="16" value="160">
+    </div>
+    <h3 style="margin-top:18px">Model</h3>
+    <div class="hint" id="modelinfo">-</div>
+  </aside>
+  <main>
+    <div class="banner">Darknode AI generates draft analysis only. Output is not verified
+      fact and no action is executed. Separate observation from inference; confirm against evidence.</div>
+    <div class="io"><div id="out" class="empty">Pick an analyst action or type a prompt below.</div></div>
+    <div class="composer">
+      <textarea id="prompt" placeholder="Ask Darknode AI... e.g. Triage: impossible-travel login for b.owens"></textarea>
+      <div class="row">
+        <button class="send" id="send">Analyze</button>
+        <span class="hint">Local model, from scratch. Ctrl/Cmd+Enter to send.</span>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+const API = location.origin.replace(/\/$/, "");
+const $ = s => document.querySelector(s);
+const EVID = ["OBSERVED","RETRIEVED","INFERRED","HYPOTHESIS","RECOMMENDATION","UNKNOWN"];
+
+function render(text){
+  const out = $("#out"); out.className=""; out.innerHTML="";
+  text.split(/\n/).forEach(raw=>{
+    const div=document.createElement("div"); div.className="line";
+    const m=raw.match(/\b(OBSERVED|RETRIEVED|INFERRED|HYPOTHESIS|RECOMMENDATION|UNKNOWN)\b\s*:?/);
+    if(m){
+      const tag=document.createElement("span"); tag.className="tag "+m[1]; tag.textContent=m[1];
+      div.appendChild(tag);
+      div.appendChild(document.createTextNode(raw.replace(m[0],"").trim()));
+    } else { div.textContent=raw; }
+    out.appendChild(div);
+  });
+}
+
+async function health(){
+  try{
+    const r=await fetch(API+"/api/health"); const j=await r.json();
+    const ok=j.model_loaded;
+    $("#dot").style.background = ok ? "var(--observed)" : "var(--inferred)";
+    $("#status").textContent = ok ? ("model "+(j.version||"loaded")) : "no trained model yet";
+    if(!ok) $("#modelinfo").textContent = j.detail || "train a model first";
+    else {
+      const info=await (await fetch(API+"/api/info")).json();
+      $("#modelinfo").textContent = "loaded: "+(info.loaded_version||"-")+" | versions: "+(info.versions.join(", ")||"none");
+    }
+  }catch(e){ $("#status").textContent="server offline"; }
+}
+
+async function send(prompt){
+  const btn=$("#send"); btn.disabled=true; $("#out").className=""; $("#out").textContent="analyzing...";
+  try{
+    const r=await fetch(API+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prompt, temperature:+$("#temp").value, max_new_tokens:+$("#maxt").value, top_k:40, top_p:0.95})});
+    if(!r.ok){ const e=await r.json(); $("#out").textContent="Model unavailable: "+(e.detail||r.status); return; }
+    const j=await r.json(); render(j.completion || "(empty)");
+  }catch(e){ $("#out").textContent="Request failed: "+e.message; }
+  finally{ btn.disabled=false; }
+}
+
+document.querySelectorAll(".act").forEach(b=>b.onclick=()=>{ $("#prompt").value=b.dataset.p; send(b.dataset.p); });
+$("#send").onclick=()=>{ const p=$("#prompt").value.trim(); if(p) send(p); };
+$("#prompt").addEventListener("keydown",e=>{ if((e.ctrlKey||e.metaKey)&&e.key==="Enter"){ const p=$("#prompt").value.trim(); if(p) send(p);} });
+$("#temp").oninput=e=>$("#tv").textContent=e.target.value;
+$("#maxt").oninput=e=>$("#mv").textContent=e.target.value;
+health();
+</script>
+</body>
+</html>
