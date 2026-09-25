@@ -34,6 +34,7 @@ A cybersecurity language model with **two tracks** and a shared retrieval layer.
 | Inference | `darknode_ai/sample.py` | Temperature / top-k / top-p sampler |
 | Foundation | `darknode_ai/foundation/` | Persona, Ollama provider, clean SFT data prep, LoRA recipe, Modelfile, NOTICE |
 | Retrieval | `darknode_ai/retrieval/` | BM25 store (`index`) + RAG grounding (RETRIEVED evidence) |
+| Agent | `darknode_ai/agent/` | Tool-calling ReAct loop (`agent`) — plan/act/observe; approval-gated tools |
 | Serving | `darknode_ai/serve/` | FastAPI panel; `DARKNODE_BACKEND=scratch\|ollama`, optional `DARKNODE_KNOWLEDGE` RAG |
 
 ## The house style it is trained toward
@@ -85,6 +86,25 @@ DARKNODE_BACKEND=ollama DARKNODE_MODEL=darknode \
 
 Every retrieved chunk is returned tagged `RETRIEVED [source | provenance]`, so
 answers are traceable to a source and gaps surface as `UNKNOWN`.
+
+## Agentic mode (like Claude Code)
+
+The `agent/` harness turns the foundation model into an agent: a ReAct-style
+tool loop that plans, calls tools, observes, and iterates. Parameter count makes
+each step smarter; the harness is what makes it an agent — so it works from 13B
+to 500B, and a bigger base simply reasons better per step.
+
+```bash
+darknode-ai index                          # build the knowledge base first
+darknode-ai agent "Audit ./config for exposed secrets and summarize findings."
+darknode-ai agent "..." --autonomous       # approve write/shell tools (sandbox only)
+```
+
+Tools: `rag_search` (grounded facts), `read_file`, `list_dir` (read-only, run
+freely) and `write_file`, `run_shell` (mutating — **denied by default**, gated
+through an approval callback; `--autonomous` approves them for authorized/lab
+use). In **Nexus**, pick it with `/engine darknode` — it runs through Nexus's
+local tool loop with full read/write/edit/run access, private and Darknode-branded.
 
 ## Foundation model (capable track)
 

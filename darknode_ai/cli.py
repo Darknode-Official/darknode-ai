@@ -8,6 +8,7 @@
     darknode-ai sample       generate text from a checkpoint
     darknode-ai register     record a trained version in the registry
     darknode-ai index        build the BM25 knowledge store for RAG
+    darknode-ai agent        run the agentic tool-loop on a task (foundation model)
     darknode-ai pipeline     corpus -> tokenizer -> prepare -> train -> eval
 """
 from __future__ import annotations
@@ -83,6 +84,14 @@ def main(argv=None):
                    metavar="PATH:FIELD:SOURCE", help="add external JSONL, e.g. "
                    "cve.jsonl:description:nvd (repeatable)")
     p.add_argument("--out", default="runs/knowledge.json")
+
+    p = sub.add_parser("agent")
+    p.add_argument("task", help="the task for Darknode to carry out")
+    p.add_argument("--knowledge", default="runs/knowledge.json",
+                   help="BM25 store for the rag_search tool (optional)")
+    p.add_argument("--autonomous", action="store_true",
+                   help="approve mutating tools (write/shell) — sandbox/authorized use only")
+    p.add_argument("--max-steps", type=int, default=8)
 
     p = sub.add_parser("pipeline")
     p.add_argument("--preset", choices=["tiny", "small", "colab_t4"], default="tiny")
@@ -184,6 +193,27 @@ def main(argv=None):
                                     provenance=source)
         store.build().save(args.out)
         print(f"indexed {len(store.docs)} chunks ({n} added) -> {args.out}")
+
+    elif args.cmd == "agent":
+        from darknode_ai.foundation.provider import OllamaProvider
+        from darknode_ai.agent import DarknodeAgent
+        store = None
+        if Path(args.knowledge).exists():
+            from darknode_ai.retrieval.store import KnowledgeStore
+            store = KnowledgeStore.load(args.knowledge)
+        prov = OllamaProvider()
+        if not prov.available():
+            raise SystemExit("Darknode model not reachable via Ollama. Build/serve it "
+                             "first (see FOUNDATION.md).")
+        agent = DarknodeAgent(prov, store=store, autonomous=args.autonomous,
+                              max_steps=args.max_steps)
+        res = agent.run(args.task)
+        for i, s in enumerate(res.steps, 1):
+            if s.tool:
+                print(f"[{i}] tool={s.tool} args={s.args}"
+                      + ("" if s.approved is None else f" approved={s.approved}"))
+        print("\n=== ANSWER ===\n" + res.answer)
+        print(f"\n(stopped: {res.stopped}; tools: {', '.join(res.tools_used) or 'none'})")
 
     elif args.cmd == "pipeline":
         # end-to-end smoke pipeline (small/tiny), for CI and local verification
