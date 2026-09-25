@@ -109,23 +109,28 @@ python -m darknode_ai.foundation.finetune \
     --base WhiteRabbitNeo/WhiteRabbitNeo-13B-v1 --data data/sft \
     --out runs/darknode-foundation --i-have-a-gpu
 
-# 3. merge adapter + convert to GGUF (llama.cpp), then package for Ollama.
-#    ollama create packages the model under the `darknode` name and applies the
-#    persona SYSTEM prompt; because the GGUF here has the fine-tuned adapter
-#    baked in, the served weights carry our data. (With a plain base and no
-#    adapter, this same step is a persona-only build.)
-python -m darknode_ai.foundation.modelfile \
-    --mode gguf --gguf ./darknode.gguf \
-    --out runs/darknode-foundation/Modelfile
+# 3. convert the LoRA adapter to a GGUF and emit a Modelfile in one step.
+#    Light path (recommended): keep the base as an Ollama tag and ATTACH the
+#    adapter as a GGUF -- no 26GB fp16 merge, runs on a modest box / your device.
+#    to_gguf.py clones llama.cpp if needed and runs convert_lora_to_gguf.py.
+python -m darknode_ai.foundation.to_gguf \
+    --adapter runs/darknode-foundation \
+    --out runs/darknode-foundation/darknode-lora.gguf \
+    --emit-modelfile --ollama-base jimscard/whiterabbit-neo
 ollama create darknode -f runs/darknode-foundation/Modelfile
 
 # 4. serve Darknode (foundation backend)
 DARKNODE_BACKEND=ollama DARKNODE_MODEL=darknode python -m darknode_ai.serve.app
 ```
 
-Step 3's adapter→GGUF merge uses PEFT `merge_and_unload` + llama.cpp
-`convert_hf_to_gguf.py`; on a base already in Ollama you can instead use
-`--mode pull --base <ollama-tag> --adapter <dir>`.
+Step 3 has two forms. **Light (above):** `to_gguf.py` converts the PEFT adapter
+to `darknode-lora.gguf` and emits `FROM <ollama base>` + `ADAPTER ./darknode-lora.gguf`
++ the persona -- the served weights carry our data via the attached adapter, and
+nothing needs a full merge. **Self-contained:** merge the adapter into the base
+(PEFT `merge_and_unload`) and convert the merged model with llama.cpp
+`convert_hf_to_gguf.py` (+ `llama-quantize` for a q4_K_M), then
+`modelfile.py --mode gguf --gguf ./darknode.gguf` for a single baked-in GGUF.
+With a plain base and no adapter, either path is a persona-only build.
 
 ## Evaluate before promoting
 
