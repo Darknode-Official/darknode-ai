@@ -89,6 +89,17 @@ def run(cfg: LoRAConfig):
     tok = AutoTokenizer.from_pretrained(cfg.base_model)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
+    if tok.chat_template is None:
+        # Many security bases (WhiteRabbitNeo / Llama-2 lineage) ship no chat
+        # template, so apply_chat_template() would crash. Set a simple, consistent
+        # instruction format so SFT can render our {system,user,assistant} messages.
+        tok.chat_template = (
+            "{% for m in messages %}"
+            "{% if m['role'] == 'system' %}{{ m['content'] + '\n\n' }}"
+            "{% elif m['role'] == 'user' %}{{ '### Instruction:\n' + m['content'] + '\n\n' }}"
+            "{% elif m['role'] == 'assistant' %}{{ '### Response:\n' + m['content'] + eos_token + '\n\n' }}"
+            "{% endif %}{% endfor %}"
+        )
 
     quant = BitsAndBytesConfig(
         load_in_4bit=cfg.load_in_4bit, bnb_4bit_quant_type="nf4",
