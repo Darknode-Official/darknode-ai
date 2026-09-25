@@ -1,16 +1,24 @@
 # Darknode AI
 
-A cybersecurity language model **trained from scratch** — its own tokenizer, its
-own transformer, its own training loop. No base model, no API wrapper, no
-pretrained weights. Built to run end-to-end in a **Google Colab** notebook and,
-at small scale, on CPU.
+A cybersecurity language model with **two tracks** and a shared retrieval layer.
 
-> **Honest scope.** A model trained from scratch on Colab-scale compute is a
-> *small* model. It learns the vocabulary, structure and house-style of
-> defensive-security text and generates coherent domain language. It is **not**
-> a replacement for a large model's reasoning. The value here is a fully owned,
-> inspectable, reproducible stack that scales up as you add corpus and compute —
-> every component is the real thing, sized down.
+1. **From-scratch** (`darknode_ai/model`, `train`) — its own tokenizer,
+   transformer, and training loop. No base model, no pretrained weights. Runs
+   end-to-end in **Google Colab** and, small, on CPU. This is the "we built the
+   architecture ourselves" track; it is honestly small.
+2. **Foundation** (`darknode_ai/foundation`) — specializes a strong, openly
+   licensed **security** base (default WhiteRabbitNeo-13B, an offensive+defensive
+   red/blue-team model) into Darknode with LoRA on clean-provenance data, served
+   under Darknode's own identity via Ollama. This is the **capable** track. See
+   [FOUNDATION.md](FOUNDATION.md).
+3. **Retrieval / RAG** (`darknode_ai/retrieval`) — a dependency-free BM25
+   knowledge store that grounds either model in RETRIEVED, source-traced evidence
+   (CVEs, your docs) instead of parametric guesswork.
+
+> **Honest scope.** The from-scratch model is *small* — coherent domain text,
+> not large-model reasoning. The foundation model is a genuinely capable
+> specialized assistant, but bounded by its base size, not frontier-tier. Facts
+> live in retrieval, not weights.
 
 ## What's in the box
 
@@ -24,6 +32,9 @@ at small scale, on CPU.
 | Evaluation | `darknode_ai/eval/` | Perplexity + behavioural probes (evidence-typing, hedging, no-action-without-approval) |
 | Registry | `darknode_ai/registry.py` | Versioned model + dataset + metrics, deploy/rollback |
 | Inference | `darknode_ai/sample.py` | Temperature / top-k / top-p sampler |
+| Foundation | `darknode_ai/foundation/` | Persona, Ollama provider, clean SFT data prep, LoRA recipe, Modelfile, NOTICE |
+| Retrieval | `darknode_ai/retrieval/` | BM25 store (`index`) + RAG grounding (RETRIEVED evidence) |
+| Serving | `darknode_ai/serve/` | FastAPI panel; `DARKNODE_BACKEND=scratch\|ollama`, optional `DARKNODE_KNOWLEDGE` RAG |
 
 ## The house style it is trained toward
 
@@ -62,11 +73,32 @@ darknode-ai sample --ckpt runs/darknode-small/best.pt \
 darknode-ai register --ckpt runs/darknode-small/best.pt --version v0.1.0
 ```
 
+## Retrieval (RAG)
+
+```bash
+darknode-ai index                                  # runs/knowledge.json (BM25)
+darknode-ai index --jsonl cve.jsonl:description:nvd # + external facts
+# serve the foundation model grounded in the store:
+DARKNODE_BACKEND=ollama DARKNODE_MODEL=darknode \
+  DARKNODE_KNOWLEDGE=runs/knowledge.json python -m darknode_ai.serve.app
+```
+
+Every retrieved chunk is returned tagged `RETRIEVED [source | provenance]`, so
+answers are traceable to a source and gaps surface as `UNKNOWN`.
+
+## Foundation model (capable track)
+
+See [FOUNDATION.md](FOUNDATION.md): build clean SFT data (`dataprep`), LoRA
+fine-tune a security base on a GPU (`finetune`), package for Ollama
+(`modelfile` -> `ollama create darknode`), and serve. Base and datasets are
+attributed in `NOTICE`; distilled-from-a-vendor sets are refused by the
+provenance guard.
+
 ## Colab
 
 Open `notebooks/darknode_ai_colab.ipynb` in Google Colab, pick a GPU runtime,
-Run All. It trains the `small` preset and saves checkpoints to Google Drive. See
-`notebooks/` for details.
+Run All. It trains the `small` from-scratch preset and saves checkpoints to
+Google Drive. See `notebooks/` for details.
 
 ## Tests
 
@@ -77,9 +109,19 @@ pytest -q          # tokenizer, redaction, data pipeline, registry (no GPU)
 
 ## Safety posture
 
-Defensive by construction. The corpus, probes and generation style push toward
-evidence-based, hedged, human-in-the-loop analysis. Secret redaction is an
-enforced gate before any text is tokenized. See `DATA_GOVERNANCE.md`.
+- **From-scratch track:** defensive by construction — corpus, probes and style
+  push evidence-based, hedged, human-in-the-loop analysis.
+- **Foundation track:** an expert **offensive + defensive** operator inside an
+  **authorized-engagement frame** (pentest, red team, CTF, research, lab). It
+  gives real technical depth for authorized work; it does not assist real-world
+  unauthorized intrusion, indiscriminate/destructive malware, or credential theft
+  against real victims (persona operating principle).
+- **Provenance:** secret/PII redaction is an enforced gate before any text is
+  used; training data distilled from another vendor's proprietary model is
+  refused (`foundation.dataprep` guard); base/dataset attribution is retained in
+  `NOTICE`. The server never executes actions — it only generates text.
+
+See `DATA_GOVERNANCE.md` and `FOUNDATION.md`.
 
 ## Scaling up
 
