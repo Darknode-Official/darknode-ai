@@ -56,6 +56,14 @@ class DarknodeGPTConfig:
         return DarknodeGPTConfig(vocab_size=vocab_size, context_len=1024,
                                  n_layer=24, n_head=16, n_embd=1024, dropout=0.1)
 
+    @staticmethod
+    def b1(vocab_size: int = 32768) -> "DarknodeGPTConfig":
+        # ~1B params. Requires an A100/H100-class GPU AND a corpus orders of
+        # magnitude larger than the current one. Provided so the architecture
+        # scales; see MODEL_CARD.md for why data, not just params, is the limit.
+        return DarknodeGPTConfig(vocab_size=vocab_size, context_len=1024,
+                                 n_layer=20, n_head=16, n_embd=2048, dropout=0.1)
+
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5) -> None:
@@ -174,8 +182,9 @@ class DarknodeGPT(nn.Module):
             nn.init.normal_(m.weight, mean=0.0, std=0.02)
 
     def num_params(self) -> int:
-        # exclude tied head (shares tok_emb) from the count
-        return sum(p.numel() for p in self.parameters()) - self.lm_head.weight.numel()
+        # parameters() already deduplicates the tied embedding/LM-head, so this
+        # is the true count of unique trainable parameters.
+        return sum(p.numel() for p in self.parameters())
 
     def _rope_cache(self, T, device):
         if self._rope is None or self._rope[0].size(0) < T or self._rope[0].device != device:

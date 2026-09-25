@@ -9,9 +9,26 @@ a production reasoning assistant.
 ## Architecture
 - Decoder-only transformer: RoPE positions, RMSNorm (pre-norm), SwiGLU MLP,
   weight-tied embeddings, causal self-attention.
-- Presets: `tiny` (~0.1–1M params, CPU/test), `small` (~15–35M params, Colab T4).
-- Byte-level BPE tokenizer trained on the same corpus (default vocab 8192),
-  lossless on arbitrary bytes (IPs, hashes, base64, JSON, logs).
+- Byte-level BPE tokenizer trained on the same corpus, lossless on arbitrary
+  bytes (IPs, hashes, base64, JSON, logs).
+
+### Size presets (exact counts)
+| preset | layers | d_model | vocab | params | realistic to train on |
+|--------|--------|---------|-------|--------|-----------------------|
+| tiny   | 2  | 64   | 512   | 0.1M   | CPU (tests) |
+| small  | 8  | 512  | 8192  | 29.5M  | CPU (slow) / any GPU |
+| medium | 12 | 768  | 16384 | 97.5M  | GPU (T4+) |
+| large  | 24 | 1024 | 32768 | 337M   | GPU (A100-class) |
+| b1     | 20 | 2048 | 32768 | 1.08B  | A100/H100 + a MUCH larger corpus |
+
+### Why bigger is not automatically better here
+Parameters need proportional data. A ~1B model wants on the order of tens of
+billions of training tokens; the current Darknode corpus is on the order of 10^5
+tokens. Training `b1` on today's corpus would overfit and produce a worse model
+than `small`. The `large`/`b1` presets exist so the architecture scales when a
+large rights-clean corpus and GPU compute are available; they are guarded behind
+`--i-have-a-big-gpu`. For now, `small` (and `medium` on a GPU) are the presets
+that actually produce a useful checkpoint.
 
 ## Training data
 - `defensive-knowledge` — hand-authored explainers (networking, Linux, IR,
