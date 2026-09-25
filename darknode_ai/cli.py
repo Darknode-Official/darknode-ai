@@ -49,7 +49,9 @@ def main(argv=None):
     p.add_argument("--out", default="data/prepared")
 
     p = sub.add_parser("train")
-    p.add_argument("--preset", choices=["tiny", "small", "medium", "large", "colab_t4"], default="small")
+    p.add_argument("--preset", choices=["tiny", "small", "medium", "large", "b1", "colab_t4"], default="small")
+    p.add_argument("--i-have-a-big-gpu", action="store_true",
+                   help="required to build large/b1 presets (guards against OOM on CPU/small GPU)")
     p.add_argument("--data-dir", default="data/prepared")
     p.add_argument("--out-dir", default="runs/darknode-small")
     p.add_argument("--tokenizer", default="runs/tokenizer.json")
@@ -104,13 +106,22 @@ def main(argv=None):
         from darknode_ai.train.config import TrainConfig
         from darknode_ai.train.trainer import train as run_train
         tok = BPETokenizer.load(args.tokenizer)
+        if args.preset in ("large", "b1") and not getattr(args, "i_have_a_big_gpu", False):
+            raise SystemExit(
+                f"Preset '{args.preset}' allocates a very large model "
+                f"({'~0.3B' if args.preset=='large' else '~1B'} params) and will OOM "
+                "without a big GPU. Also note: the current corpus is far too small to "
+                "train it usefully (it would overfit). Re-run with --i-have-a-big-gpu "
+                "only if you have the GPU and a much larger dataset.")
         mcfg = {"tiny": DarknodeGPTConfig.tiny,
                 "small": DarknodeGPTConfig.small,
                 "medium": DarknodeGPTConfig.medium,
                 "large": DarknodeGPTConfig.large,
+                "b1": DarknodeGPTConfig.b1,
                 "colab_t4": DarknodeGPTConfig.small}[args.preset](tok.vocab_size)
         tcfg = {"tiny": TrainConfig.tiny, "small": TrainConfig,
                 "medium": TrainConfig.colab_t4, "large": TrainConfig.colab_t4,
+                "b1": TrainConfig.colab_t4,
                 "colab_t4": TrainConfig.colab_t4}[args.preset]()
         tcfg.data_dir, tcfg.out_dir = args.data_dir, args.out_dir
         if args.max_steps:
