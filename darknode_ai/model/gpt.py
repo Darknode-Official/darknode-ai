@@ -44,6 +44,18 @@ class DarknodeGPTConfig:
         return DarknodeGPTConfig(vocab_size=vocab_size, context_len=512,
                                  n_layer=8, n_head=8, n_embd=512, dropout=0.1)
 
+    @staticmethod
+    def medium(vocab_size: int = 16384) -> "DarknodeGPTConfig":
+        # ~85M params; a real GPU (or patient CPU) target
+        return DarknodeGPTConfig(vocab_size=vocab_size, context_len=512,
+                                 n_layer=12, n_head=12, n_embd=768, dropout=0.1)
+
+    @staticmethod
+    def large(vocab_size: int = 32768) -> "DarknodeGPTConfig":
+        # ~300M params; needs a proper GPU
+        return DarknodeGPTConfig(vocab_size=vocab_size, context_len=1024,
+                                 n_layer=24, n_head=16, n_embd=1024, dropout=0.1)
+
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-5) -> None:

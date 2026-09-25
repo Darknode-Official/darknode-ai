@@ -47,3 +47,19 @@ def test_dedup(tmp_path):
     tok = _tok("identical document about SMB port 445 detection logic here " * 20)
     stats = build_dataset(manifest, tok, tmp_path / "out", val_fraction=0.0)
     assert stats.docs_deduped == 1
+
+
+def test_build_manifest_scans_corpus_and_authored(tmp_path):
+    from darknode_ai.data.corpus import build_manifest
+    data = tmp_path / "data"
+    (data / "corpus").mkdir(parents=True)
+    (data / "authored").mkdir(parents=True)
+    (data / "corpus" / "knowledge.txt").write_text("seed knowledge doc")
+    (data / "authored" / "agent_linux.txt").write_text("authored linux doc")
+    out = build_manifest(data / "corpus", data / "manifest.json")
+    assert out["sources"] == 2
+    manifest = json.loads((data / "manifest.json").read_text())
+    cats = {s["category"] for s in manifest["sources"]}
+    assert "linux-security" in cats and "defensive-knowledge" in cats
+    provs = {s["provenance"] for s in manifest["sources"]}
+    assert "darknode-agent-authored" in provs
