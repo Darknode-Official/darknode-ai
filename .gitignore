@@ -14,3 +14,7 @@ runs/
 *.bin
 *.pt
 .ipynb_checkpoints/
+
+# authored corpus (agent-written, tracked so training is reproducible on any machine)
+!data/authored/
+!data/authored/**

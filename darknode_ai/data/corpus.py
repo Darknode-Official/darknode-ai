@@ -247,6 +247,54 @@ def _synthetic_case(rng: random.Random) -> str:
     return rng.choice(_GENERATORS)(rng)
 
 
+_CATEGORY = {
+    "knowledge": "defensive-knowledge",
+    "synthetic_cases": "synthetic-triage",
+    "agent_networking": "networking",
+    "agent_linux": "linux-security",
+    "agent_windows_ad": "windows-ad",
+    "agent_ir": "incident-response",
+    "agent_detection": "detection-engineering",
+    "agent_cloud": "cloud-security",
+    "agent_appsec": "appsec-secure-coding",
+    "agent_threatintel": "threat-intel",
+    "agent_logs": "log-analysis",
+    "agent_malware_defense": "malware-defense",
+}
+
+
+def build_manifest(corpus_dir: str | Path, manifest_path: str | Path | None = None) -> dict:
+    """Scan every *.txt in the corpus dir AND a sibling 'authored' dir (tracked,
+    agent-written) and write a governance manifest including all of them.
+    Category is derived from the filename; unrecognised files get 'misc'.
+    Paths are written relative to the manifest's parent (the pipeline root)."""
+    corpus_dir = Path(corpus_dir)
+    data_dir = corpus_dir.parent
+    manifest_path = Path(manifest_path) if manifest_path else data_dir / "manifest.json"
+    root = manifest_path.parent
+    dirs = [corpus_dir, data_dir / "authored"]
+    sources = []
+    for d in dirs:
+        if not d.is_dir():
+            continue
+        for fp in sorted(d.glob("*.txt")):
+            stem = fp.stem
+            try:
+                rel = fp.relative_to(root).as_posix()
+            except ValueError:
+                rel = fp.as_posix()
+            sources.append({
+                "path": rel,
+                "license": "CC0-1.0",
+                "category": _CATEGORY.get(stem, "misc"),
+                "provenance": "darknode-agent-authored" if stem.startswith("agent_")
+                              else "darknode-authored",
+                "allowed_use": "train",
+            })
+    manifest_path.write_text(json.dumps({"sources": sources}, indent=2), encoding="utf-8")
+    return {"sources": len(sources), "files": [s["path"] for s in sources]}
+
+
 def build_corpus(out_dir: str | Path, n_synthetic: int = 1200, seed: int = 7) -> dict:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

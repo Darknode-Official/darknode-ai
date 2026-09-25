@@ -39,13 +39,17 @@ def main(argv=None):
     p.add_argument("--out", default="runs/tokenizer.json")
     p.add_argument("--vocab-size", type=int, default=8192)
 
+    p = sub.add_parser("manifest")
+    p.add_argument("--corpus", default="data/corpus")
+    p.add_argument("--out", default="data/manifest.json")
+
     p = sub.add_parser("prepare")
     p.add_argument("--manifest", default="data/manifest.json")
     p.add_argument("--tokenizer", default="runs/tokenizer.json")
     p.add_argument("--out", default="data/prepared")
 
     p = sub.add_parser("train")
-    p.add_argument("--preset", choices=["tiny", "small", "colab_t4"], default="small")
+    p.add_argument("--preset", choices=["tiny", "small", "medium", "large", "colab_t4"], default="small")
     p.add_argument("--data-dir", default="data/prepared")
     p.add_argument("--out-dir", default="runs/darknode-small")
     p.add_argument("--tokenizer", default="runs/tokenizer.json")
@@ -81,6 +85,10 @@ def main(argv=None):
     elif args.cmd == "tokenizer":
         _train_tokenizer(args.corpus, args.out, args.vocab_size)
 
+    elif args.cmd == "manifest":
+        from darknode_ai.data.corpus import build_manifest
+        print(build_manifest(args.corpus, args.out))
+
     elif args.cmd == "prepare":
         from darknode_ai.tokenizer.bpe import BPETokenizer
         from darknode_ai.data.pipeline import build_dataset
@@ -98,8 +106,11 @@ def main(argv=None):
         tok = BPETokenizer.load(args.tokenizer)
         mcfg = {"tiny": DarknodeGPTConfig.tiny,
                 "small": DarknodeGPTConfig.small,
+                "medium": DarknodeGPTConfig.medium,
+                "large": DarknodeGPTConfig.large,
                 "colab_t4": DarknodeGPTConfig.small}[args.preset](tok.vocab_size)
         tcfg = {"tiny": TrainConfig.tiny, "small": TrainConfig,
+                "medium": TrainConfig.colab_t4, "large": TrainConfig.colab_t4,
                 "colab_t4": TrainConfig.colab_t4}[args.preset]()
         tcfg.data_dir, tcfg.out_dir = args.data_dir, args.out_dir
         if args.max_steps:
