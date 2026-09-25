@@ -84,6 +84,21 @@ def test_dataprep_builds_clean_sft(tmp_path):
     assert prov["records"] == stats.records
 
 
+def test_control_cases_split_without_endoftext():
+    # Regression: a synthetic file delimited ONLY by <|user|> (no <|endoftext|>)
+    # must yield one record per case, not collapse into a single giant record.
+    text = ("<|user|> Case one.\n<|assistant|> Answer one.\n"
+            "<|user|> Case two.\n<|assistant|> Answer two.\n"
+            "<|user|> Case three.\n<|assistant|> Answer three.\n")
+    recs = dataprep._parse_control_cases(text)
+    assert len(recs) == 3
+    assert recs[0]["user"] == "Case one." and recs[0]["assistant"] == "Answer one."
+    assert recs[2]["assistant"] == "Answer three."
+    # Either delimiter (or a mix) works.
+    mixed = "<|user|> A\n<|assistant|> a<|endoftext|><|user|> B\n<|assistant|> b"
+    assert len(dataprep._parse_control_cases(mixed)) == 2
+
+
 def test_dataprep_redacts_secrets(tmp_path):
     authored = tmp_path / "authored"
     authored.mkdir()
