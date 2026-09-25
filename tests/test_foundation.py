@@ -99,6 +99,23 @@ def test_control_cases_split_without_endoftext():
     assert len(dataprep._parse_control_cases(mixed)) == 2
 
 
+def test_to_gguf_cmd_and_base_resolution(tmp_path):
+    from darknode_ai.foundation import to_gguf
+    # base id is read from adapter_config.json unless overridden
+    adapter = tmp_path / "adapter"
+    adapter.mkdir()
+    (adapter / "adapter_config.json").write_text(json.dumps(
+        {"base_model_name_or_path": "WhiteRabbitNeo/WhiteRabbitNeo-13B-v1"}))
+    assert to_gguf._base_model_id(adapter, None).endswith("WhiteRabbitNeo-13B-v1")
+    assert to_gguf._base_model_id(adapter, "override/base") == "override/base"
+    cmd = to_gguf.build_convert_cmd("conv.py", str(adapter), "out.gguf",
+                                    "base/id", outtype="f16")
+    assert cmd[:2] == ["python", "conv.py"]
+    assert "--base-model-id" in cmd and "base/id" in cmd
+    assert cmd[-1] == str(adapter)  # adapter dir is the positional arg
+    assert "--outfile" in cmd and "out.gguf" in cmd
+
+
 def test_dataprep_redacts_secrets(tmp_path):
     authored = tmp_path / "authored"
     authored.mkdir()
