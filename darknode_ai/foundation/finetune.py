@@ -42,6 +42,8 @@ class LoRAConfig:
     load_in_4bit: bool = True
     gradient_checkpointing: bool = True
     max_steps: int | None = None   # cap steps (fast trial); overrides epochs when set
+    save_steps: int | None = None  # checkpoint every N steps (survive Colab disconnects)
+    resume: bool = False           # resume from the latest checkpoint in out_dir
     seed: int = 0
 
     @classmethod
@@ -150,6 +152,11 @@ def run(cfg: LoRAConfig):
         dataset_text_field="text",
         gradient_checkpointing=cfg.gradient_checkpointing,
         seed=cfg.seed, report_to=[])
+    if cfg.save_steps:
+        # Checkpoint on a step cadence (not per-epoch) so a long run survives a
+        # Colab disconnect and can resume; skip eval to keep each save cheap.
+        sft_kw.update(save_strategy="steps", save_steps=cfg.save_steps,
+                      eval_strategy="no", save_total_limit=3)
     if "max_seq_length" not in sft_params and "max_length" in sft_params:
         sft_kw["max_length"] = sft_kw.pop("max_seq_length")  # renamed in trl 1.x
     sft_kw = {k: v for k, v in sft_kw.items() if k in sft_params}
@@ -162,7 +169,18 @@ def run(cfg: LoRAConfig):
     elif "tokenizer" in trainer_params:           # trl 0.x
         trainer_kw["tokenizer"] = tok
     trainer = SFTTrainer(**trainer_kw)
-    trainer.train()
+    # Resume from the newest checkpoint in out_dir if asked and one exists, so a
+    # run interrupted by a Colab disconnect continues instead of restarting.
+    resume_ckpt = None
+    if cfg.resume:
+        import glob, re
+        cks = glob.glob(f"{cfg.out_dir}/checkpoint-*")
+        if cks:
+            resume_ckpt = max(cks, key=lambda p: int(re.sub(r"\D", "", p.split("checkpoint-")[-1]) or 0))
+            print(f"Resuming from {resume_ckpt}")
+        else:
+            print("--resume set but no checkpoint found; starting fresh")
+    trainer.train(resume_from_checkpoint=resume_ckpt)
     trainer.save_model(cfg.out_dir)
     tok.save_pretrained(cfg.out_dir)
     print(f"Darknode LoRA adapter saved -> {cfg.out_dir}")
@@ -187,6 +205,10 @@ def main(argv=None):
     ap.add_argument("--max-steps", type=int, default=None,
                     help="cap training steps for a fast/cheap trial (overrides epochs)")
     ap.add_argument("--lora-r", type=int, default=None, help="LoRA rank override")
+    ap.add_argument("--save-steps", type=int, default=None,
+                    help="checkpoint every N steps to --out (survive Colab disconnects)")
+    ap.add_argument("--resume", action="store_true",
+                    help="resume from the latest checkpoint in --out if present")
     ap.add_argument("--no-4bit", action="store_true")
     ap.add_argument("--i-have-a-gpu", action="store_true",
                     help="acknowledge this allocates a large model on GPU(s)")
@@ -214,6 +236,9 @@ def main(argv=None):
         cfg.max_steps = args.max_steps
     if args.lora_r is not None:
         cfg.lora_r = args.lora_r
+    if args.save_steps is not None:
+        cfg.save_steps = args.save_steps
+    cfg.resume = args.resume
     cfg.load_in_4bit = not args.no_4bit
     run(cfg)
 
