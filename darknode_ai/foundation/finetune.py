@@ -41,6 +41,7 @@ class LoRAConfig:
     lora_dropout: float = 0.05
     load_in_4bit: bool = True
     gradient_checkpointing: bool = True
+    max_steps: int | None = None   # cap steps (fast trial); overrides epochs when set
     seed: int = 0
 
     @classmethod
@@ -125,6 +126,7 @@ def run(cfg: LoRAConfig):
         eval_dataset=ds["validation"],
         args=SFTConfig(
             output_dir=cfg.out_dir, num_train_epochs=cfg.epochs,
+            max_steps=cfg.max_steps if cfg.max_steps else -1,  # -1 = use epochs
             per_device_train_batch_size=cfg.batch_size,
             gradient_accumulation_steps=cfg.grad_accum,
             learning_rate=cfg.lr, lr_scheduler_type="cosine", warmup_ratio=0.03,
@@ -149,6 +151,15 @@ def main(argv=None):
     ap.add_argument("--data", default=LoRAConfig.data_dir)
     ap.add_argument("--out", default=None)
     ap.add_argument("--epochs", type=float, default=None)
+    ap.add_argument("--batch", type=int, default=None,
+                    help="per-device batch size (use 1 to fit a 13B on a free T4)")
+    ap.add_argument("--grad-accum", type=int, default=None,
+                    help="gradient accumulation steps (raise to keep effective batch)")
+    ap.add_argument("--seq-len", type=int, default=None,
+                    help="max sequence length (lower, e.g. 1024, to fit small GPUs)")
+    ap.add_argument("--max-steps", type=int, default=None,
+                    help="cap training steps for a fast/cheap trial (overrides epochs)")
+    ap.add_argument("--lora-r", type=int, default=None, help="LoRA rank override")
     ap.add_argument("--no-4bit", action="store_true")
     ap.add_argument("--i-have-a-gpu", action="store_true",
                     help="acknowledge this allocates a large model on GPU(s)")
@@ -166,6 +177,16 @@ def main(argv=None):
         cfg.out_dir = args.out
     if args.epochs is not None:
         cfg.epochs = args.epochs
+    if args.batch is not None:
+        cfg.batch_size = args.batch
+    if args.grad_accum is not None:
+        cfg.grad_accum = args.grad_accum
+    if args.seq_len is not None:
+        cfg.max_seq_len = args.seq_len
+    if args.max_steps is not None:
+        cfg.max_steps = args.max_steps
+    if args.lora_r is not None:
+        cfg.lora_r = args.lora_r
     cfg.load_in_4bit = not args.no_4bit
     run(cfg)
 
