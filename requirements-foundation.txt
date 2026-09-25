@@ -1,0 +1,11 @@
+# Foundation (open-base) track -- GPU fine-tuning deps.
+# The core package and the serving provider do NOT need these; installing them
+# is only required to run darknode_ai.foundation.finetune on a GPU box/Colab.
+torch>=2.3
+transformers>=4.44
+peft>=0.12
+trl>=0.9
+datasets>=2.20
+accelerate>=0.33
+bitsandbytes>=0.43   # 4-bit QLoRA; GPU only
+sentencepiece>=0.2

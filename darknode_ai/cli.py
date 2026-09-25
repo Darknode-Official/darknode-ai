@@ -7,6 +7,7 @@
     darknode-ai eval         evaluate a checkpoint (perplexity + probes)
     darknode-ai sample       generate text from a checkpoint
     darknode-ai register     record a trained version in the registry
+    darknode-ai index        build the BM25 knowledge store for RAG
     darknode-ai pipeline     corpus -> tokenizer -> prepare -> train -> eval
 """
 from __future__ import annotations
@@ -18,8 +19,9 @@ from pathlib import Path
 
 def _train_tokenizer(corpus_dir: str, out: str, vocab_size: int, verbose=True):
     from darknode_ai.tokenizer.bpe import BPETokenizer
+    dirs = [Path(corpus_dir), Path(corpus_dir).parent / "authored"]
     text = "\n".join(p.read_text(encoding="utf-8", errors="replace")
-                     for p in Path(corpus_dir).glob("*.txt"))
+                     for d in dirs if d.is_dir() for p in sorted(d.glob("*.txt")))
     tok = BPETokenizer()
     tok.train(text, vocab_size=vocab_size, verbose=verbose)
     tok.save(out)
@@ -73,6 +75,14 @@ def main(argv=None):
     p.add_argument("--version", required=True)
     p.add_argument("--data-dir", default="data/prepared")
     p.add_argument("--limitations", default="Small from-scratch model; domain text generation only.")
+
+    p = sub.add_parser("index")
+    p.add_argument("--authored", default="data/authored")
+    p.add_argument("--corpus", default="data/corpus")
+    p.add_argument("--jsonl", action="append", default=[],
+                   metavar="PATH:FIELD:SOURCE", help="add external JSONL, e.g. "
+                   "cve.jsonl:description:nvd (repeatable)")
+    p.add_argument("--out", default="runs/knowledge.json")
 
     p = sub.add_parser("pipeline")
     p.add_argument("--preset", choices=["tiny", "small", "colab_t4"], default="tiny")
@@ -152,6 +162,28 @@ def main(argv=None):
             checkpoint=args.ckpt, tokenizer=args.tokenizer,
             limitations=args.limitations, state="evaluated"))
         print(f"registered {args.version}: {metrics['heldout_perplexity']} ppl")
+
+    elif args.cmd == "index":
+        from darknode_ai.retrieval.store import KnowledgeStore
+        store = KnowledgeStore()
+        n = 0
+        if Path(args.authored).is_dir():
+            n += store.ingest_dir(args.authored, provenance="darknode-authored")
+        kdir = Path(args.corpus)
+        if kdir.is_dir():
+            for kf in sorted(kdir.glob("*.txt")):
+                n += store.ingest_text(kf.read_text(encoding="utf-8", errors="replace"),
+                                       source=kf.name, provenance="darknode-corpus")
+        for spec in args.jsonl:
+            parts = spec.split(":")
+            if len(parts) < 2:
+                raise SystemExit(f"--jsonl expects PATH:FIELD[:SOURCE], got '{spec}'")
+            path, field = parts[0], parts[1]
+            source = parts[2] if len(parts) > 2 else "external"
+            n += store.ingest_jsonl(path, text_field=field, source=source,
+                                    provenance=source)
+        store.build().save(args.out)
+        print(f"indexed {len(store.docs)} chunks ({n} added) -> {args.out}")
 
     elif args.cmd == "pipeline":
         # end-to-end smoke pipeline (small/tiny), for CI and local verification

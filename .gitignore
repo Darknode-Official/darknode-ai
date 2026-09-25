@@ -18,3 +18,6 @@ runs/
 # authored corpus (agent-written, tracked so training is reproducible on any machine)
 !data/authored/
 !data/authored/**
+
+# foundation-track generated SFT data
+data/sft/
