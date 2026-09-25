@@ -20,6 +20,30 @@ A cybersecurity language model with **two tracks** and a shared retrieval layer.
 > specialized assistant, but bounded by its base size, not frontier-tier. Facts
 > live in retrieval, not weights.
 
+## Persona vs. fine-tune: what "trained on your data" means
+
+Three distinct states a Darknode model can be in are easy to conflate, so this
+table is explicit. "Trained on our data" is true for (b) and (c) only —
+**not** for the persona build (a).
+
+| State | What it is | Do the weights carry our data? | How to produce it | Runs today? |
+|-------|-----------|--------------------------------|-------------------|-------------|
+| **(a) Persona build** | A strong open base (default WhiteRabbitNeo-13B) wearing the Darknode persona as its **SYSTEM prompt** | **No.** Base weights are unchanged; only behavior/identity changes | `ollama create darknode -f Modelfile` from a base like `jimscard/whiterabbit-neo`, **no adapter** | **Yes** — any Ollama box, no GPU training |
+| **(b) From-scratch v0.1.0** | Our own tokenizer + transformer trained from random init on our corpus | **Yes** — genuinely trained on our data | `darknode-ai train` then `darknode-ai register --version v0.1.0` | Yes, but ~15M params — coherent domain text, **not a useful chat assistant** |
+| **(c) Fine-tuned foundation** | The 13B base plus a **QLoRA adapter** trained on our SFT data, then merged/attached | **Yes** — the real thing: base capability with our data in the weights | `darknode_ai/foundation/finetune.py` (or the 13B trial notebook) on a **GPU**, then merge + `ollama create` | Only after a GPU run |
+
+Key point: `ollama create darknode` **by itself is a persona build, not
+fine-tuning.** It makes a capable 13B answer *as* Darknode, but the model does
+not "know" anything from our training data — its weights are still the base's.
+Putting our data into the weights requires the QLoRA fine-tune (c), which needs a
+GPU. The SFT data those weights learn from is built by
+`darknode_ai/foundation/dataprep.py`.
+
+The fastest, cheapest way to run a real fine-tune is
+**[`notebooks/darknode_13b_trial.ipynb`](notebooks/darknode_13b_trial.ipynb)** —
+13B QLoRA, T4-friendly, no large downloads. It proves the full path
+(clean data -> QLoRA adapter -> Modelfile) end to end.
+
 ## What's in the box
 
 | Stage | Module | From scratch? |
@@ -114,11 +138,22 @@ fine-tune a security base on a GPU (`finetune`), package for Ollama
 attributed in `NOTICE`; distilled-from-a-vendor sets are refused by the
 provenance guard.
 
+Note the distinction above: running `ollama create darknode` **without** a
+fine-tuned adapter is a **persona build** (a) — capable base, our identity,
+untouched weights. Only the QLoRA `finetune` step (c) actually trains our data
+into the weights. See
+[Persona vs. fine-tune](#persona-vs-fine-tune-what-trained-on-your-data-means).
+
 ## Colab
 
 Open `notebooks/darknode_ai_colab.ipynb` in Google Colab, pick a GPU runtime,
 Run All. It trains the `small` from-scratch preset and saves checkpoints to
 Google Drive. See `notebooks/` for details.
+
+To actually **fine-tune** the capable 13B foundation model (state (c) above),
+use `notebooks/darknode_13b_trial.ipynb` instead — a T4-friendly 13B QLoRA run
+on the CC0 authored + synthetic data, no large downloads. That is the fast,
+cheap way to produce a real Darknode adapter whose weights carry our data.
 
 ## Tests
 
