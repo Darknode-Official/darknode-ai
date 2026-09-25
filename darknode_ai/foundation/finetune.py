@@ -131,21 +131,37 @@ def run(cfg: LoRAConfig):
 
     ds = ds.map(format_chat, batched=True, remove_columns=ds["train"].column_names)
 
-    trainer = SFTTrainer(
-        model=model,
-        train_dataset=ds["train"],
-        eval_dataset=ds["validation"],
-        args=SFTConfig(
-            output_dir=cfg.out_dir, num_train_epochs=cfg.epochs,
-            max_steps=cfg.max_steps if cfg.max_steps else -1,  # -1 = use epochs
-            per_device_train_batch_size=cfg.batch_size,
-            gradient_accumulation_steps=cfg.grad_accum,
-            learning_rate=cfg.lr, lr_scheduler_type="cosine", warmup_ratio=0.03,
-            bf16=True, logging_steps=10, eval_strategy="epoch",
-            save_strategy="epoch", max_seq_length=cfg.max_seq_len,
-            gradient_checkpointing=cfg.gradient_checkpointing,
-            seed=cfg.seed, report_to=[]),
-    )
+    # TRL's SFTConfig/SFTTrainer signatures drift between versions (e.g. trl 0.9
+    # vs 1.13): max_seq_length -> max_length, warmup_ratio dropped, tokenizer ->
+    # processing_class. Build the kwargs, adapt the renames, then filter each dict
+    # to what the *installed* signature actually accepts so one file runs on any TRL.
+    import inspect
+    sft_params = set(inspect.signature(SFTConfig.__init__).parameters)
+    trainer_params = set(inspect.signature(SFTTrainer.__init__).parameters)
+
+    sft_kw = dict(
+        output_dir=cfg.out_dir, num_train_epochs=cfg.epochs,
+        max_steps=cfg.max_steps if cfg.max_steps else -1,  # -1 = use epochs
+        per_device_train_batch_size=cfg.batch_size,
+        gradient_accumulation_steps=cfg.grad_accum,
+        learning_rate=cfg.lr, lr_scheduler_type="cosine", warmup_ratio=0.03,
+        bf16=True, logging_steps=10, eval_strategy="epoch",
+        save_strategy="epoch", max_seq_length=cfg.max_seq_len,
+        dataset_text_field="text",
+        gradient_checkpointing=cfg.gradient_checkpointing,
+        seed=cfg.seed, report_to=[])
+    if "max_seq_length" not in sft_params and "max_length" in sft_params:
+        sft_kw["max_length"] = sft_kw.pop("max_seq_length")  # renamed in trl 1.x
+    sft_kw = {k: v for k, v in sft_kw.items() if k in sft_params}
+
+    trainer_kw = dict(
+        model=model, train_dataset=ds["train"], eval_dataset=ds["validation"],
+        args=SFTConfig(**sft_kw))
+    if "processing_class" in trainer_params:      # trl 1.x
+        trainer_kw["processing_class"] = tok
+    elif "tokenizer" in trainer_params:           # trl 0.x
+        trainer_kw["tokenizer"] = tok
+    trainer = SFTTrainer(**trainer_kw)
     trainer.train()
     trainer.save_model(cfg.out_dir)
     tok.save_pretrained(cfg.out_dir)
