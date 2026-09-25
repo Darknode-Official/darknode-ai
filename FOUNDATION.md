@@ -10,6 +10,30 @@ Two tracks ship in this repo:
   clean-provenance data, and serves it as Darknode AI via Ollama. This is the
   path to a genuinely capable local Darknode.
 
+## Persona vs. fine-tune: what "trained on your data" means
+
+Read this before running anything below — it is the difference between *sounding
+like* Darknode and *being trained as* Darknode. There are three distinct states:
+
+| State | What it is | Do the weights carry our data? | How to produce it | Runs today? |
+|-------|-----------|--------------------------------|-------------------|-------------|
+| **(a) Persona build** | The 13B base wearing the Darknode persona as its **SYSTEM prompt** | **No.** Base weights are unchanged; only behavior/identity changes | `python -m darknode_ai.foundation.modelfile --mode pull --base jimscard/whiterabbit-neo` (no `--adapter`), then `ollama create darknode -f Modelfile` | **Yes** — any Ollama box, no GPU training |
+| **(b) From-scratch v0.1.0** | Our own tokenizer + transformer trained from random init on our corpus | **Yes** — genuinely trained on our data | `darknode-ai train` then `darknode-ai register --version v0.1.0` | Yes, but ~15M params — coherent domain text, **not a useful chat assistant** |
+| **(c) Fine-tuned foundation** | The 13B base plus a **QLoRA adapter** trained on our SFT data, then merged/attached | **Yes** — the real thing: base capability with our data in the weights | `finetune.py` (or `notebooks/darknode_13b_trial.ipynb`) on a **GPU**, then merge + `ollama create` | Only after a GPU run |
+
+The trap: `ollama create darknode` **is a persona build unless you feed it a
+fine-tuned adapter.** A persona build is a real, capable 13B answering *as*
+Darknode, but its weights are the base's — it does not "know" anything from our
+training data. Only the QLoRA fine-tune in `finetune.py` (state (c)) puts our SFT
+data (built by `dataprep.py`) into the weights. Same `darknode` model name,
+upgraded weights.
+
+Fastest, cheapest real fine-tune:
+**[`notebooks/darknode_13b_trial.ipynb`](notebooks/darknode_13b_trial.ipynb)** —
+13B QLoRA, T4-friendly, on the always-available CC0 authored + synthetic data,
+no large downloads. It proves clean data -> QLoRA adapter -> Modelfile end to end
+before you spend on the 100B/500B runs.
+
 ## Why this base
 
 **Default: WhiteRabbitNeo-13B-v1** (`WhiteRabbitNeo/WhiteRabbitNeo-13B-v1`) — an
@@ -65,7 +89,11 @@ unauthorized intrusion, indiscriminate/destructive malware, or credential theft
 against real victims. That boundary is in the system prompt, stated once as an
 operating principle — not a per-turn disclaimer.
 
-## Build it
+## Build it (the real fine-tune, state (c))
+
+This is the QLoRA path that actually trains our data into the weights. (For the
+persona-only build (a) — capable base, our identity, no training — skip to
+step 3 with a plain base and no adapter: see the table above.)
 
 ```bash
 # 1. clean SFT data (offline corpus + offensive datasets you downloaded locally)
@@ -74,12 +102,18 @@ python -m darknode_ai.foundation.dataprep --out data/sft \
     --dataset nyu-ctf=./nyu-ctf.jsonl
 
 # 2. LoRA fine-tune on a GPU box or Colab/again GPU runtime
+#    (this is what makes it a fine-tune, not a persona build -- it trains our
+#     SFT data into a LoRA adapter; needs a GPU)
 pip install -r requirements-foundation.txt
 python -m darknode_ai.foundation.finetune \
     --base WhiteRabbitNeo/WhiteRabbitNeo-13B-v1 --data data/sft \
     --out runs/darknode-foundation --i-have-a-gpu
 
-# 3. merge adapter + convert to GGUF (llama.cpp), then package for Ollama
+# 3. merge adapter + convert to GGUF (llama.cpp), then package for Ollama.
+#    ollama create packages the model under the `darknode` name and applies the
+#    persona SYSTEM prompt; because the GGUF here has the fine-tuned adapter
+#    baked in, the served weights carry our data. (With a plain base and no
+#    adapter, this same step is a persona-only build.)
 python -m darknode_ai.foundation.modelfile \
     --mode gguf --gguf ./darknode.gguf \
     --out runs/darknode-foundation/Modelfile
