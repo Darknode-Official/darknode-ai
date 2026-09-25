@@ -142,11 +142,19 @@ def _authored_records(authored_dir: Path) -> list[dict]:
 
 
 def _parse_control_cases(text: str) -> list[dict]:
-    """Parse `<|user|> ... <|assistant|> ...` blocks into chat records."""
+    """Parse `<|user|> ... <|assistant|> ...` blocks into chat records.
+
+    Records are delimited by the `<|user|>` marker. Some corpora also place a
+    `<|endoftext|>` between cases and some place none at all -- splitting only on
+    `<|endoftext|>` (as an earlier version did) collapsed a whole file with no
+    such marker into ONE giant record and silently dropped every other case. We
+    normalise either delimiter to `<|user|>` and split on that so every case is
+    recovered regardless of which separator the file uses.
+    """
     out = []
-    blocks = re.split(r"<\|endoftext\|>", text)
-    for b in blocks:
-        m = re.search(r"<\|user\|>(.*?)<\|assistant\|>(.*)", b, re.S)
+    text = text.replace("<|endoftext|>", "<|user|>")
+    for seg in re.split(r"<\|user\|>", text):
+        m = re.search(r"(.*?)<\|assistant\|>(.*)", seg, re.S)
         if not m:
             continue
         user = m.group(1).strip()
